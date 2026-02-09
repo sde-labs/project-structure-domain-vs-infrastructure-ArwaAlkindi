@@ -18,4 +18,4 @@ def process_alert_reading(conn, timestamp: str, site_id: str, alert_type: str, l
 		longitude=longitude,
 	)
 
-
+	print(f"Alert recorded with severity: {severity}")
