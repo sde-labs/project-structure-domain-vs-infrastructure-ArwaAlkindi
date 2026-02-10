@@ -1,189 +1,123 @@
-[![Review Assignment Due Date](https://classroom.github.com/assets/deadline-readme-button-22041afd0340ce965d47ae6ef1cefeee28c7c493a6346c4f15d667ab976d596c.svg)](https://classroom.github.com/a/dZ5tEP45)
-# Week 1: Project Structure - Domain vs Infrastructure
+# Week 3: Environment Variables & Secrets
 
 ## Learning Objectives
 By the end of this lesson, you will:
-- Understand the separation between Domain and Infrastructure layers
-- Recognize why architectural boundaries matter in data engineering
-- Implement business logic independently from I/O operations
+- Understand why secrets should never be hardcoded or committed
+- Learn how environment variables separate code from configuration (local dev vs CI)
+- Validate configuration early to fail fast (just like Week 2 input validation)
+- Recognize the boundary between config validation and business logic (config is neither infra nor domain)
 
 ---
 
-## What is Clean Architecture?
+## The Problem with Week 2 Code
 
-Clean Architecture, introduced by Robert C. Martin (Uncle Bob), organizes code into layers with a critical rule: **dependencies point inward**.
+We validated data, but configuration is still implicit. That leads to brittle deployments and leaked secrets.
 
-> "The overriding rule that makes this architecture work is The Dependency Rule. This rule says that source code dependencies can only point inwards. Nothing in an inner circle can know anything at all about something in an outer circle."
-> 
-> — Robert C. Martin, *Clean Architecture*
-
-### The Two Layers We're Focusing On
-
-**Domain Layer (Inner Circle)**
-- Pure business logic
-- No knowledge of databases, files, APIs, or external systems
-- Highly testable - no mocks needed
-- Example: "A leak alert is always critical"
-
-**Infrastructure Layer (Outer Circle)**
-- Handles I/O operations (databases, file systems, network)
-- Depends on Domain layer (can import from it)
-- Example: "Save this alert to SQLite"
-
-**The Golden Rule**: Domain code never imports from Infrastructure. Infrastructure can import from Domain.
-
----
-
-## Why This Matters in Data Engineering
-
-In DE, you're constantly dealing with external systems: databases, message queues, cloud storage, APIs. Without clear boundaries:
-- Business logic gets tangled with I/O code
-- Testing requires spinning up databases
-- Switching from Kafka to Kinesis means rewriting validation logic
-- Bug fixes in one area break unrelated features
-
-Clean separation means:
-- Test business rules without touching a database
-- Swap data sources without changing processing logic
-- Understand code faster - know exactly where to look
-
----
-
-## Today's System: Oil Well Alert Monitoring
-
-You're building a monitoring system for oil wells that processes sensor readings and stores alerts.
-
-### Data Model
-
-**Heartbeats Table** (already implemented as example)
-```
-heartbeats (site_id TEXT, timestamp TEXT)
-```
-
-**Alerts Table** (you'll implement)
-```
-alerts (timestamp TEXT, site_id TEXT, alert_type TEXT, severity TEXT, latitude REAL, longitude REAL)
-```
-
-### Alert Types & Classification Rules
-
-| Alert Type | Severity |
-|------------|----------|
-| PRESSURE | MODERATE |
-| TEMPERATURE | MODERATE |
-| LEAK | CRITICAL |
-| ACOUSTIC | MODERATE |
-| BLOCKAGE | CRITICAL |
-
----
-
-## Template Code Walkthrough
-
-### Project Structure
-```
-oil-well-monitoring/
-├── domain/
-│   ├── __init__.py
-│   ├── models.py          # Data classes
-│   └── processors.py      # Business logic
-├── infrastructure/
-│   ├── __init__.py
-│   ├── database.py        # DB connection
-│   └── repositories.py    # Data access
-├── main.py
-└── tests/
-    └── test_week1.py
-```
-
-### Heartbeat System (Reference Implementation)
-
-**Domain Layer** (`domain/processors.py`):
 ```python
-def validate_heartbeat(site_id: str, timestamp: str) -> bool:
-    """Pure business logic - no I/O"""
-    if not site_id or len(site_id) < 3:
-        return False
-    if not timestamp:
-        return False
-    return True
+# Hardcoded values or hidden assumptions
+database_url = "alerts.db"          # ❌
+api_token = "replace-me"            # ❌
 ```
 
-**Infrastructure Layer** (`infrastructure/repositories.py`):
-```python
-def insert_heartbeat(conn, site_id: str, timestamp: str):
-    """Handles database I/O"""
-    cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO heartbeats (site_id, timestamp) VALUES (?, ?)",
-        (site_id, timestamp)
-    )
-    conn.commit()
-```
-
-**Integration** (`main.py`):
-```python
-def process_heartbeat(conn, site_id: str, timestamp: str):
-    if validate_heartbeat(site_id, timestamp):  # Domain
-        insert_heartbeat(conn, site_id, timestamp)  # Infrastructure
-```
-
-Notice the flow: validate (domain) → persist (infrastructure).
+**What happens?**
+1. ✅ Code runs locally
+2. ❌ Secrets end up in source control
+3. ❌ Prod needs different config than dev/test
+4. ❌ CI (GitHub Actions) doesn't have your laptop's `.env` or shell exports, so failures show up in CI first
 
 ---
 
-## Your Assignment
+## The Solution: Environment Variables
 
-Implement the alert monitoring system following the same pattern.
+Environment variables keep config out of code. Validate them at startup so failures are immediate.
 
-### What You Need to Do
-
-1. **In `domain/processors.py`**: Implement `classify_alert(alert_type: str) -> str`
-   - Takes an alert type (PRESSURE, TEMPERATURE, LEAK, ACOUSTIC, BLOCKAGE)
-   - Returns "CRITICAL" or "MODERATE" based on the classification table above
-   - This is pure business logic with no I/O
-
-2. **In `infrastructure/repositories.py`**: Implement `insert_alert(...)`
-   - Takes connection, timestamp, site_id, alert_type, severity, latitude, longitude
-   - Inserts into the alerts table
-   - This handles database I/O
-
-3. **In `main.py`**: Complete `process_alert_reading(...)`
-   - First, call `classify_alert()` to get the severity (Domain)
-   - Then, call `insert_alert()` with all parameters including severity (Infrastructure)
-   - Wire domain and infrastructure together
-
-### Key Insight
-
-Before you pass data to `insert_alert()`, you must add the `severity` field by calling the classification function. The classification logic belongs in the Domain layer because it's a business rule. The database insertion belongs in Infrastructure because it's I/O.
+### Enter python-dotenv and gh-secrets
+`python-dotenv` loads local `.env` values for development (never commit `.env`). In CI, use GitHub Secrets (`gh secret set -f .env` or UI) to provide the same variables.
 
 ---
 
-## Setup Instructions
+## Example Pattern
 
-1. Clone this repository
-2. Install dependencies: `pip install -r requirements.txt`
-3. Complete the TODOs in the code
-4. Run tests: `pytest tests/test_week1.py -v`
-5. Run the application: `python main.py`
+```python
+import os
+from dotenv import load_dotenv
+from pydantic import BaseModel, field_validator
 
-### Expected Output
+class Settings(BaseModel):
+    env: str
+    database_url: str
+    api_token: str
 
-When you run `main.py`, you should see:
+    @classmethod
+    def from_env(cls):
+        load_dotenv()
+        return cls(
+            env=os.getenv("APP_ENV"),
+            database_url=os.getenv("DATABASE_URL"),
+            api_token=os.getenv("API_TOKEN"),
+        )
+
+    @field_validator("env")
+    def validate_env(cls, v):
+        if v not in {"dev", "test", "prod"}:
+            raise ValueError("env must be one of: dev, test, prod")
+        return v
 ```
-Processing heartbeat for SITE_001...
-Heartbeat recorded successfully.
 
-Processing alert: LEAK at SITE_001...
-Alert recorded with severity: CRITICAL
+---
 
-Processing alert: TEMPERATURE at SITE_002...
-Alert recorded with severity: MODERATE
+## Understanding the Architecture
+
+### Where Does Configuration Belong?
+
+Configuration is not business logic. It sits at the boundary and should be validated before your domain logic runs.
+
+- **Config validation**: Boundary/infrastructure concern - validate once at startup, then pass safe values inward
+- **Business validation**: Domain concern - validate inputs and rules that exist even without deployment
+
+---
+
+## Testing Your Solution
+
+### Run Tests Locally
+```bash
+pytest tests/test_week3.py -v  # Should pass after implementing config, and prior weeks should still pass
 ```
+
+Local: use `.env` or exports. CI: set repo secrets. Missing secrets should fail fast.
+
+### Expected Behavior
+
+**Valid config (should work):**
+```dotenv
+APP_ENV=dev
+DATABASE_URL=alerts.db
+API_TOKEN=replace-me
+```
+
+**CI setup (GitHub Actions): set repo secrets using your preferred method**
+UI: `Settings -> Secrets and variables -> Actions -> New repository secret`
+CLI: `gh secret set -f .env`
+
+---
+
+## Real-World Connection
+
+### Where You’ll Use This
+- Deployments where config differs per environment
+- CI systems (like GitHub Actions) injecting credentials at runtime
+
+### Industry Standard
+- Docker Compose: direct `.env` interpolation for service config
+- GitHub Actions: `gh secret set -f .env` to import dotenv keys as secrets
+- `python-dotenv`: direct `.env` loading in app startup
+- 12-factor apps: config in environment, not in code
 
 ---
 
 ## Discussion Questions
 
+<<<<<<< HEAD
 1. **Dependency Direction**: Why can Infrastructure import from Domain, but not vice versa? What breaks if we reverse this?
 
 2. **Testability**: How would you test `classify_alert()` vs `insert_alert()`? Which one is easier to test and why?
@@ -193,20 +127,51 @@ Alert recorded with severity: MODERATE
 4. **Beyond Week 1**: What other business logic might belong in the Domain layer for this system? (Hint: think about validation rules, alert deduplication, priority scoring)
 
 5. **Code Smell**: If you see `import sqlite3` at the top of a file in the `domain/` folder, what's wrong? How would you fix it?
+=======
+**Production Scenario:** A developer accidentally checks in a `.env` file with a real API token. What could go wrong? How do you prevent it? How do you remediate it?
+
+---
+
+## Your Assignment
+
+Implement the Week 3 config layer.
+
+**In `src/config/settings.py`:**
+1. Implement `from_env()` using `python-dotenv`.
+2. Require `APP_ENV`, `DATABASE_URL`, `API_TOKEN`.
+3. Validate:
+   - `env` in `dev | test | prod`
+   - `database_url` is non-empty and ends with `.db`
+   - `api_token` is non-empty
+
+**In `src/main.py`:**
+- Implement `load_settings()` to return `Settings.from_env()`.
+>>>>>>> upstream/main
 
 ---
 
 ## Next Week Preview
 
+<<<<<<< HEAD
 Week 2 will introduce **type validation** using Pydantic. You'll learn how to enforce data contracts at the boundaries between layers, catching errors before they propagate through your system.
+=======
+Week 4 will introduce **error handling and logging**, so failures become visible and debuggable in production.
+>>>>>>> upstream/main
 
 ---
 
 ## Success Criteria
 
+<<<<<<< HEAD
 - ✅ All tests pass
 - ✅ Domain layer doesn't import from infrastructure
 - ✅ Alert classification follows the business rules
 - ✅ Alerts are persisted with correct severity
 
 **Remember**: The goal isn't just to make tests pass. The goal is to internalize why we separate concerns and recognize where different types of code belong. Take your time understanding the heartbeat example before implementing alerts.
+=======
+- ✅ All tests from this week and prior weeks pass
+- ✅ Missing env vars fail fast
+- ✅ Invalid config is rejected
+- ✅ Valid config loads cleanly
+>>>>>>> upstream/main
