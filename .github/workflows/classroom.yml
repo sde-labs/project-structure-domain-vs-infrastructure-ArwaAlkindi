@@ -37,8 +37,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-<<<<<<< HEAD
-=======
       - name: Preflight required secrets
         shell: bash
         run: |
@@ -63,7 +61,6 @@ jobs:
             exit 1
           fi
 
->>>>>>> upstream/main
       - name: Run autograding tests
         uses: education/autograding@v1
         continue-on-error: true
