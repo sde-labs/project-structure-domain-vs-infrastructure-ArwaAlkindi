@@ -37,8 +37,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-<<<<<<< HEAD
-=======
       - name: Preflight required secrets
         shell: bash
         run: |
@@ -62,15 +60,6 @@ jobs:
           if [ "$missing" -ne 0 ]; then
             exit 1
           fi
-
-      - name: Write runtime .env for autograding
-        shell: bash
-        run: |
-          cat > .env <<EOF
-          APP_ENV=${APP_ENV}
-          DATABASE_URL=${DATABASE_URL}
-          API_TOKEN=${API_TOKEN}
-          EOF
 
       - name: Run autograding tests
         uses: education/autograding@v1
