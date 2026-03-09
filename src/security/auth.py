@@ -12,7 +12,7 @@ import hmac
 import json
 from datetime import datetime
 from datetime import timezone
-
+from typing import Optional
 
 def _b64url_encode(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).decode("ascii").rstrip("=")
@@ -81,8 +81,8 @@ def create_hs256_jwt(
     subject: str,
     secret: str,
     expires_in_seconds: int = 3600,
-    scopes: list[str] | None = None,
-    now: datetime | None = None,
+    scopes: Optional[list[str]] = None,
+    now: Optional[datetime] = None,
 ) -> str:
     """Create a signed JWT string using HS256.
 
@@ -123,7 +123,7 @@ def create_hs256_jwt(
     return f"{header_b64}.{payload_b64}.{signature_b64}"
 
 
-def verify_hs256_jwt(token: str, secret: str, now: datetime | None = None) -> dict:
+def verify_hs256_jwt(token: str, secret: str, now: Optional[datetime] = None) -> dict:
     """Verify an HS256 JWT and return claims.
 
     Validation requirements:
