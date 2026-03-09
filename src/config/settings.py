@@ -11,9 +11,7 @@ class Settings(BaseModel):
     """
     Application configuration sourced from environment variables.
 
-    TODO (Week 4): Implement the following:
-    - from_env classmethod to read required env vars
-    - validators for env, database_url, api_token, and log_level
+    Week 4 adds runtime config validation and log-level control.
     """
     env: str
     database_url: str
@@ -36,7 +34,7 @@ class Settings(BaseModel):
         Optional variables:
         - LOG_LEVEL (defaults to INFO)
 
-        TODO: Implement reading and missing-variable handling.
+        Reads required values and validates quickly.
         """
         load_dotenv()
 
@@ -59,18 +57,12 @@ class Settings(BaseModel):
 
         return cls(**values)
 
-    # TODO: Add @field_validator for env
-    # Valid values: "dev", "test", "prod"
-
     @field_validator("env")
     def validate_env(cls, value):
         valid = {"dev", "test", "prod"}
         if value not in valid:
             raise ValueError("env must be one of: dev, test, prod")
         return value
-
-    # TODO: Add @field_validator for database_url
-    # Must end with .db and not be empty
 
     @field_validator("database_url")
     def validate_database_url(cls, value):
@@ -79,9 +71,6 @@ class Settings(BaseModel):
         if not value.endswith(".db"):
             raise ValueError("database_url must end with .db")
         return value
-
-    # TODO: Add @field_validator for api_token
-    # Must be non-empty
 
     @field_validator("api_token")
     def validate_api_token(cls, value):

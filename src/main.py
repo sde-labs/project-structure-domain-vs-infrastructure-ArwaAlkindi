@@ -32,34 +32,24 @@ def load_settings():
     """
     Load application settings from environment.
 
-    TODO (Week 4): Return Settings.from_env().
+    Load and validate settings.
     """
     return Settings.from_env()
-    raise NotImplementedError
 
 
-def build_logger(log_level: str, stream=None) -> logging.Logger:
-    """
-    Build and return the application logger.
-
-    TODO (Week 4):
-    - create/get a logger named "oil_well_monitoring"
-    - set the logger level from `log_level`
-    - attach one StreamHandler (default stream if stream is None)
-    - set formatter to: %(asctime)s,%(levelname)s,%(message)s
-    - avoid duplicate handlers across repeated calls in tests
-    """
 def build_logger(log_level: str, stream=None) -> logging.Logger:
     logger = logging.getLogger("oil_well_monitoring")
-    logger.setLevel(getattr(logging, log_level))
+    logger.setLevel(log_level.upper())
     logger.propagate = False
 
     logger.handlers.clear()
-
     handler = logging.StreamHandler(stream)
-    formatter = logging.Formatter("%(asctime)s,%(levelname)s,%(message)s", datefmt="%Y-%m-%d %H:%M:%S")
-    handler.setFormatter(formatter)
-
+    handler.setFormatter(
+        logging.Formatter(
+            "%(asctime)s,%(levelname)s,%(message)s",
+            datefmt="%Y-%m-%dT%H:%M:%S",
+        )
+    )
     logger.addHandler(handler)
 
     return logger
@@ -68,73 +58,46 @@ def build_logger(log_level: str, stream=None) -> logging.Logger:
 def process_alert_event(conn, logger: logging.Logger, timestamp: str, site_id: str,
                         alert_type: str, latitude: float, longitude: float,
                         max_retries: int = 2) -> Alert:
-    """
-    Validate, classify, persist, and log one alert.
-
-    TODO (Week 4):
-    - log debug context before processing
-    - build Alert to validate input
-    - classify and persist alert
-    - retry persistence failures up to `max_retries`
-    - log each retry with WARNING
-    - log success at INFO
-    - on ValidationError use logger.exception(...) then re-raise
-    - after final failed retry use logger.exception(...) then re-raise
-    """
-    logger.debug("processing_alert")
+    logger.debug("processing_alert site_id=%s alert_type=%s", site_id, alert_type)
 
     try:
-        _ = Alert.model_validate(
-            {
-                "timestamp": timestamp,
-                "site_id": site_id,
-                "alert_type": alert_type,
-                "latitude": latitude,
-                "longitude": longitude,
-                "severity": "TEMP",
-            }
+        alert = Alert(
+            timestamp=timestamp,
+            site_id=site_id,
+            alert_type=alert_type,
+            severity="",
+            latitude=latitude,
+            longitude=longitude,
         )
     except ValidationError:
         logger.exception("validation_failed")
         raise
 
-    severity = classify_alert(alert_type)
+    alert.severity = classify_alert(alert.alert_type)
 
-    alert = Alert(
-        timestamp=timestamp,
-        site_id=site_id,
-        alert_type=alert_type,
-        severity=severity,
-        latitude=latitude,
-        longitude=longitude,
-    )
-
-    attempt = 0
-
-    while attempt <= max_retries:
+    for attempt in range(max_retries + 1):
         try:
             insert_alert(
-                conn=conn,
-                timestamp=timestamp,
-                site_id=site_id,
-                alert_type=alert_type,
-                severity=severity,
-                latitude=latitude,
-                longitude=longitude,
+                conn,
+                alert.timestamp,
+                alert.site_id,
+                alert.alert_type,
+                alert.severity,
+                alert.latitude,
+                alert.longitude,
             )
-
             logger.info("alert_recorded")
             return alert
-
         except Exception:
-            if attempt == max_retries:
-                logger.exception("alert_processing_failed")
-                raise
+            if attempt < max_retries:
+                logger.warning(
+                    "retrying_persist attempt=%s max_retries=%s",
+                    attempt + 1,
+                    max_retries,
+                )
+                continue
 
-            attempt += 1
-            logger.warning("retrying_persist")
+            logger.exception("alert_processing_failed")
+            raise
 
-    try:
-        return Settings.from_env()
-    except Exception as e:
-        raise RuntimeError(f"Failed to load variables: {e}") from e
+    raise RuntimeError("unreachable")
