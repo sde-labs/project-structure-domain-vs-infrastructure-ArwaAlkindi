@@ -9,14 +9,16 @@ Week 7 focus:
 """
 import time
 import uuid
+from typing import Optional, Dict
+
 
 
 def record_metric(
     name: str,
     value: float,
     unit: str = "count",
-    tags: dict | None = None,
-    now: int | None = None,
+    tags: Optional[Dict] = None,
+    now: Optional[int] = None,
 ) -> dict:
     """Record a named metric with optional dimensions.
 
@@ -25,7 +27,20 @@ def record_metric(
     - tags should default to {} (not None) in the returned dict
     - timestamp is an epoch int; use now if provided, else time.time()
     """
-    raise NotImplementedError
+    if tags is None:
+        tags={}
+    if now is None:
+        now = int(time.time())
+    
+    metric = {
+        "name": name,
+        "value": value,
+        "unit": unit,
+        "tags": tags,
+        "timestamp": now,
+    }
+    return metric
+
 
 
 def build_health_response(checks: dict[str, bool]) -> dict:
@@ -35,7 +50,13 @@ def build_health_response(checks: dict[str, bool]) -> dict:
     - Return {"status": "healthy", "checks": checks} when all are True
     - Return {"status": "degraded", "checks": checks} when any are False
     """
-    raise NotImplementedError
+    status = "healthy"
+    for check_passed in checks.values():
+        if not check_passed:
+            status = "degraded"
+            break
+    return {"status": status, "checks": checks}
+
 
 
 def elapsed_ms(start_ns: int, end_ns: int) -> float:
@@ -44,7 +65,8 @@ def elapsed_ms(start_ns: int, end_ns: int) -> float:
     Use time.time_ns() to capture start/end values.
     Convert: (end_ns - start_ns) / 1_000_000
     """
-    raise NotImplementedError
+    return (end_ns - start_ns) / 1_000_000
+
 
 
 def check_threshold(value: float, warning: float, critical: float) -> str:
@@ -55,4 +77,15 @@ def check_threshold(value: float, warning: float, critical: float) -> str:
     - "warning"  when warning <= value < critical
     - "critical" when value >= critical
     """
-    raise NotImplementedError
+
+    if value < warning:
+        return "ok"
+
+    elif (value >= warning) and (value < critical):
+        return "warning"
+    
+    elif value>= critical:
+        return 'critical'
+    else:
+        return f"Warning value should be less than critical value: warning = {warning}, critical = {critical}"
+    
